@@ -226,6 +226,31 @@ export class ExecToolCategory extends BaseToolCategory {
   }
 
   /**
+   * Reconnect a disconnected connectable tab (SSH, Telnet, Serial) and wait
+   * until its session is open again.
+   * @returns true if the session is open after reconnecting
+   */
+  public async reconnectSession(session: BaseTerminalTabComponentWithId, timeoutMs: number): Promise<boolean> {
+    const tab = session.tab as any;
+    if (typeof tab.reconnect !== 'function') {
+      return false;
+    }
+
+    this.logger.info(`Reconnecting session ${session.id} (${session.tab.title})`);
+    // reconnect() resolves once the connection attempt finishes, but it can
+    // also wait on user input (e.g. a password prompt), so cap the wait.
+    const reconnect = Promise.resolve(tab.reconnect()).catch(err => {
+      this.logger.error(`Reconnect failed for session ${session.id}:`, err);
+    });
+    const deadline = Date.now() + timeoutMs;
+    await Promise.race([reconnect, new Promise(resolve => setTimeout(resolve, timeoutMs))]);
+    while (!this.isSessionConnected(session) && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return this.isSessionConnected(session);
+  }
+
+  /**
    * Get terminal buffer content as text
    * @param session The terminal session
    * @returns The terminal buffer content as text

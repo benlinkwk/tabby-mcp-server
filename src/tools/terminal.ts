@@ -217,6 +217,15 @@ export class ExecToolCategory extends BaseToolCategory {
   }
 
   /**
+   * Whether the tab still has a live session that can receive input.
+   * After an SSH session is closed, Tabby sets `tab.session` to null and
+   * `sendInput()` silently drops everything.
+   */
+  public isSessionConnected(session: BaseTerminalTabComponentWithId): boolean {
+    return !!session.tab.session?.open;
+  }
+
+  /**
    * Get terminal buffer content as text
    * @param session The terminal session
    * @returns The terminal buffer content as text

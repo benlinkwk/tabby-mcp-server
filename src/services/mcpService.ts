@@ -19,7 +19,6 @@ import { log } from 'console';
  */
 @Injectable({ providedIn: 'root' })
 export class McpService {
-  private server: McpServer;
   private transports: { [sessionId: string]: SSEServerTransport } = {};
   private app: express.Application;
   private isRunning = false;
@@ -34,12 +33,6 @@ export class McpService {
     private execToolCategory: ExecToolCategory,
     private logger: McpLoggerService
   ) {
-    // Initialize MCP Server
-    this.server = new McpServer({
-      name: "Tabby",
-      version: "1.0.0"
-    });
-
     // Register tool categories
     // this.registerToolCategory(this.tabToolCategory);
     this.registerToolCategory(this.execToolCategory);
@@ -53,20 +46,35 @@ export class McpService {
    */
   private registerToolCategory(category: ToolCategory): void {
     this.toolCategories.push(category);
-    
-    // Register all tools from the category
     category.mcpTools.forEach(tool => {
-      const inputSchema = (tool.schema || {}) as z.ZodRawShape;
-
-      this.server.tool(
-        tool.name,
-        tool.description,
-        inputSchema,
-        async (args, extra) => tool.handler(args, extra)
-      );
-
-      this.logger.info(`Registered tool: ${tool.name} from category: ${category.name} with schema: ${JSON.stringify(inputSchema)}`);
+      this.logger.info(`Registered tool: ${tool.name} from category: ${category.name} with schema: ${JSON.stringify(tool.schema || {})}`);
     });
+  }
+
+  /**
+   * Create an MCP server for one SSE connection.
+   * An McpServer sends every response on the transport it was connected to
+   * last, so sharing one between clients sends results to the wrong client.
+   * @param connectionClosed aborted when this client disconnects
+   */
+  private createServer(connectionClosed: AbortSignal): McpServer {
+    const server = new McpServer({
+      name: "Tabby",
+      version: "1.0.0"
+    });
+
+    this.toolCategories.forEach(category => {
+      category.mcpTools.forEach(tool => {
+        server.tool(
+          tool.name,
+          tool.description,
+          (tool.schema || {}) as z.ZodRawShape,
+          async (args, extra) => tool.handler(args, { ...extra, connectionClosed })
+        );
+      });
+    });
+
+    return server;
   }
 
   /**
@@ -95,6 +103,9 @@ export class McpService {
 
       this.transports[sessionId] = transport;
 
+      const connectionClosed = new AbortController();
+      const server = this.createServer(connectionClosed.signal);
+
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       const cleanup = () => {
         if (heartbeat) {
@@ -103,6 +114,9 @@ export class McpService {
         }
         if (this.transports[sessionId]) {
           delete this.transports[sessionId];
+          // Stop tool calls still waiting for this client
+          connectionClosed.abort();
+          server.close().catch(err => this.logger.error(`Error closing MCP server for sessionId ${sessionId}:`, err));
           this.logger.info(`SSE connection closed for sessionId ${sessionId}`);
         }
       };
@@ -115,7 +129,7 @@ export class McpService {
 
       // Connect first so the SDK writes the SSE headers and initial endpoint
       // event before we emit any keep-alive comments.
-      await this.server.connect(transport);
+      await server.connect(transport);
 
       // Periodic SSE comment keeps the stream alive across idle gaps (e.g. while
       // a long command runs) and surfaces a dead socket via a failed write,

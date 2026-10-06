@@ -54,7 +54,8 @@ export class ExecCommandTool extends BaseTool {
     session: any,
     commandExplanation?: string,
     retryAttempt: number = 1,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    connectionClosed?: AbortSignal
   ): Promise<any> {
     try {
       this.logger.info(`Executing command (attempt ${retryAttempt}/${this.MAX_RETRY_ATTEMPTS}): ${command}`);
@@ -215,9 +216,17 @@ printf '${marker} %s\\n' "$?"
       let commandStarted = false;
       let commandFinished = false;
       let sessionClosed = false;
+      let clientGone = false;
 
       while (!commandFinished && !aborted) {
         await new Promise(resolve => setTimeout(resolve, 100)); // Poll every 100ms
+
+        // The MCP client disconnected. Stop waiting but leave the command
+        // running in the terminal; nobody asked to stop it.
+        if (connectionClosed?.aborted) {
+          clientGone = true;
+          break;
+        }
 
         // The MCP client cancelled the request (e.g. the user interrupted it)
         if (signal?.aborted) {
@@ -297,6 +306,11 @@ printf '${marker} %s\\n' "$?"
         return this.handleAbortedCommand(command, session, startMarker, executionStartTime, pairProgrammingEnabled);
       }
 
+      if (clientGone) {
+        this.logger.info(`MCP client disconnected, stopped waiting for: ${command}`);
+        return createErrorResponse('MCP client disconnected');
+      }
+
       // Do not retry: the command may already have run on the remote side
       if (sessionClosed) {
         this.logger.warn(`Session ${session.id} closed while running: ${command}`);
@@ -315,7 +329,7 @@ printf '${marker} %s\\n' "$?"
           await new Promise(resolve => setTimeout(resolve, 1000));
           
           // Recursive retry
-          return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1, signal);
+          return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1, signal, connectionClosed);
         } else {
           throw new Error(`Command execution failed after ${this.MAX_RETRY_ATTEMPTS} attempts`);
         }
@@ -337,7 +351,7 @@ printf '${marker} %s\\n' "$?"
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Recursive retry
-        return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1, signal);
+        return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1, signal, connectionClosed);
       } else {
         this.logger.error(`Command execution failed after ${this.MAX_RETRY_ATTEMPTS} attempts:`, error);
         throw error;
@@ -654,7 +668,7 @@ POSSIBLE ERRORS:
           this.logger.info(`Using terminal session ${session.id} (${session.tab.title})`);
 
           // Execute command with retry logic
-          return await this.executeCommandWithRetry(command, session, commandExplanation, 1, extra?.signal);
+          return await this.executeCommandWithRetry(command, session, commandExplanation, 1, extra?.signal, extra?.connectionClosed);
 
         } catch (err) {
           this.logger.error(`Error executing command:`, err);

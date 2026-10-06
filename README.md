@@ -188,6 +188,7 @@ Default plugin configuration:
     "port": 3001,
     "serverUrl": "http://localhost:3001",
     "enableDebugLogging": true,
+    "autoReconnect": false,
     "pairProgrammingMode": {
       "enabled": true,
       "showConfirmationDialog": true,
@@ -198,6 +199,10 @@ Default plugin configuration:
 ```
 
 Configure these options in Tabby under **Settings → Plugins → MCP**.
+
+### Auto Reconnect
+
+When `autoReconnect` is enabled and `exec_command` targets an SSH, Telnet or Serial tab whose session has closed, the plugin reconnects the tab (same as Tabby's **Reconnect** action, using the saved profile) and waits up to 30 seconds before running the command. If the tab does not reconnect in time, for example because it is waiting for a password, `exec_command` returns an error. When disabled (the default), `exec_command` returns an error for a disconnected tab.
 
 ### Pair Programming Mode
 

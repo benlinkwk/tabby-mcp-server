@@ -14,6 +14,7 @@ export class McpSettingsTabComponent implements OnInit {
     port: number = 3001;
     enableDebugLogging: boolean = false;
     startOnBoot: boolean = true;
+    autoReconnect: boolean = false;
 
     // Pair Programming Mode settings
     pairProgrammingEnabled: boolean = false;
@@ -92,6 +93,7 @@ export class McpSettingsTabComponent implements OnInit {
                 this.port = this.config.store.mcp.port || 3001;
                 this.enableDebugLogging = !!this.config.store.mcp.enableDebugLogging;
                 this.startOnBoot = this.config.store.mcp.startOnBoot !== false; // Default to true if not set
+                this.autoReconnect = this.config.store.mcp.autoReconnect === true;
 
                 // Load Pair Programming Mode settings
                 if (this.config.store.mcp.pairProgrammingMode) {
@@ -206,6 +208,19 @@ export class McpSettingsTabComponent implements OnInit {
             this.logger.info(`Start on boot ${this.startOnBoot ? 'enabled' : 'disabled'}`);
         } catch (error) {
             console.error('Error toggling start on boot:', error);
+        }
+    }
+
+    toggleAutoReconnect(): void {
+        try {
+            if (!this.config.store.mcp) {
+                this.config.store.mcp = {};
+            }
+            this.config.store.mcp.autoReconnect = this.autoReconnect;
+            this.config.save();
+            this.logger.info(`Auto reconnect ${this.autoReconnect ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+            console.error('Error toggling auto reconnect:', error);
         }
     }
 

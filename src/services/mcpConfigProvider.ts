@@ -16,6 +16,8 @@ export class McpConfigProvider extends ConfigProvider {
       port: 3001,
       serverUrl: 'http://localhost:3001',
       enableDebugLogging: true,
+      // Reconnect a disconnected SSH/Telnet/Serial tab before exec_command
+      autoReconnect: false,
       pairProgrammingMode: {
         enabled: false,
         autoFocusTerminal: true,

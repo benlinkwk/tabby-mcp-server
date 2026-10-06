@@ -25,6 +25,8 @@ export class ExecCommandTool extends BaseTool {
   private readonly DEFAULT_TYPING_DELAY = 1;
   // Maximum retry attempts
   private readonly MAX_RETRY_ATTEMPTS = 3;
+  // How long to wait for a disconnected tab to reconnect
+  private readonly RECONNECT_TIMEOUT_MS = 30000;
 
   constructor(
     private execToolCategory: ExecToolCategory,
@@ -159,7 +161,16 @@ export class ExecCommandTool extends BaseTool {
       // A closed session drops all input, so the end marker would never
       // appear and the wait loop below would spin forever.
       if (!this.execToolCategory.isSessionConnected(session)) {
-        return createErrorResponse(`Terminal session ${session.id} (${session.tab.title}) is disconnected. Reconnect the tab in Tabby and try again.`);
+        const autoReconnect = this.config.store.mcp?.autoReconnect === true;
+        if (!autoReconnect) {
+          return createErrorResponse(`Terminal session ${session.id} (${session.tab.title}) is disconnected. Reconnect the tab in Tabby, or enable "Auto reconnect" in the MCP settings.`);
+        }
+        const reconnected = await this.execToolCategory.reconnectSession(session, this.RECONNECT_TIMEOUT_MS);
+        if (!reconnected) {
+          return createErrorResponse(`Terminal session ${session.id} (${session.tab.title}) is disconnected and did not reconnect within ${this.RECONNECT_TIMEOUT_MS / 1000}s. Check the tab in Tabby (it may be waiting for a password).`);
+        }
+        // Give the remote shell a moment to print its prompt
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       // Generate unique markers for this command. Keep the marker protocol

@@ -46,6 +46,19 @@
     .text-muted Automatically start the MCP server when Tabby starts
 
   .form-group
+    label Auto Reconnect
+    .d-flex
+      toggle(
+        [(ngModel)]='autoReconnect',
+      )
+      button.btn.btn-secondary.ml-2(
+        (click)='toggleAutoReconnect()',
+      )
+        i.fas.fa-save.mr-1
+        span Save
+    .text-muted Reconnect a disconnected SSH/Telnet/Serial tab before running exec_command. When off, exec_command returns an error instead.
+
+  .form-group
     label Server Control
     .d-flex
       button.btn.btn-primary.mr-2(

@@ -171,8 +171,8 @@ For TOML-based configs, map the same SSE URL using your client's supported SSE M
 
 | Tool | Description | Parameters |
 | --- | --- | --- |
-| `get_ssh_session_list` | List available Tabby terminal sessions | none |
-| `exec_command` | Execute a shell command in a terminal tab | `command`, `tabId`, `commandExplanation` |
+| `get_ssh_session_list` | List available Tabby terminal sessions, including whether each one is `connected` | none |
+| `exec_command` | Execute a shell command in a terminal tab. Returns an error instead of waiting if the session is disconnected or closes mid-command | `command`, `tabId`, `commandExplanation` |
 | `get_terminal_buffer` | Read terminal buffer content | `tabId`, `startLine`, `endLine` |
 | `get_command_output` | Retrieve full/paginated command output | `outputId`, `startLine`, `maxLines` |
 

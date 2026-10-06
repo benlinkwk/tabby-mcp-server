@@ -32,7 +32,8 @@ An array of terminal session objects with the following structure:
     "title": "bash", // Terminal title
     "customTitle": "My Terminal", // User-defined title if set
     "hasActivity": false, // Whether there is activity in the terminal
-    "hasFocus": true // Whether this terminal is currently focused
+    "hasFocus": true, // Whether this terminal is currently focused
+    "connected": true // Whether the session is open (false = e.g. SSH session closed)
   },
   ...
 ]
@@ -56,6 +57,7 @@ NOTES:
           customTitle: session.tab.customTitle,
           hasActivity: session.tab.hasActivity,
           hasFocus: session.tab.hasFocus,
+          connected: this.execToolCategory.isSessionConnected(session),
         }));
 
         return createJsonResponse(serializedSessions);

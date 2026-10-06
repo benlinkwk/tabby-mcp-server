@@ -53,7 +53,8 @@ export class ExecCommandTool extends BaseTool {
     command: string,
     session: any,
     commandExplanation?: string,
-    retryAttempt: number = 1
+    retryAttempt: number = 1,
+    signal?: AbortSignal
   ): Promise<any> {
     try {
       this.logger.info(`Executing command (attempt ${retryAttempt}/${this.MAX_RETRY_ATTEMPTS}): ${command}`);
@@ -155,6 +156,12 @@ export class ExecCommandTool extends BaseTool {
         }
       }
 
+      // A closed session drops all input, so the end marker would never
+      // appear and the wait loop below would spin forever.
+      if (!this.execToolCategory.isSessionConnected(session)) {
+        return createErrorResponse(`Terminal session ${session.id} (${session.tab.title}) is disconnected. Reconnect the tab in Tabby and try again.`);
+      }
+
       // Generate unique markers for this command. Keep the marker protocol
       // shell-agnostic: print a start marker, run the command, then print the
       // end marker with the exit code on the same line.
@@ -207,9 +214,21 @@ printf '${marker} %s\\n' "$?"
       let output = '';
       let commandStarted = false;
       let commandFinished = false;
+      let sessionClosed = false;
 
       while (!commandFinished && !aborted) {
         await new Promise(resolve => setTimeout(resolve, 100)); // Poll every 100ms
+
+        // The MCP client cancelled the request (e.g. the user interrupted it)
+        if (signal?.aborted) {
+          this.execToolCategory.abortCommand(session.id);
+          break;
+        }
+
+        if (!this.execToolCategory.isSessionConnected(session)) {
+          sessionClosed = true;
+          break;
+        }
 
         // Get terminal buffer
         const textAfter = this.execToolCategory.getTerminalBufferText(session);
@@ -278,6 +297,12 @@ printf '${marker} %s\\n' "$?"
         return this.handleAbortedCommand(command, session, startMarker, executionStartTime, pairProgrammingEnabled);
       }
 
+      // Do not retry: the command may already have run on the remote side
+      if (sessionClosed) {
+        this.logger.warn(`Session ${session.id} closed while running: ${command}`);
+        return createErrorResponse(`Terminal session ${session.id} (${session.tab.title}) disconnected while the command was running. The command may or may not have completed; check get_terminal_buffer after reconnecting.`);
+      }
+
       // Check if command execution failed and should retry
       if (!commandStarted || !commandFinished) {
         if (retryAttempt < this.MAX_RETRY_ATTEMPTS) {
@@ -290,7 +315,7 @@ printf '${marker} %s\\n' "$?"
           await new Promise(resolve => setTimeout(resolve, 1000));
           
           // Recursive retry
-          return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1);
+          return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1, signal);
         } else {
           throw new Error(`Command execution failed after ${this.MAX_RETRY_ATTEMPTS} attempts`);
         }
@@ -312,7 +337,7 @@ printf '${marker} %s\\n' "$?"
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Recursive retry
-        return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1);
+        return this.executeCommandWithRetry(command, session, commandExplanation, retryAttempt + 1, signal);
       } else {
         this.logger.error(`Command execution failed after ${this.MAX_RETRY_ATTEMPTS} attempts:`, error);
         throw error;
@@ -629,7 +654,7 @@ POSSIBLE ERRORS:
           this.logger.info(`Using terminal session ${session.id} (${session.tab.title})`);
 
           // Execute command with retry logic
-          return await this.executeCommandWithRetry(command, session, commandExplanation);
+          return await this.executeCommandWithRetry(command, session, commandExplanation, 1, extra?.signal);
 
         } catch (err) {
           this.logger.error(`Error executing command:`, err);
